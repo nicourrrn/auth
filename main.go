@@ -9,15 +9,22 @@ import (
 )
 
 const liveMin = 10
+const refreliveMin = 5
 
 var AccessSecret = []byte("access_secret")
+var RefreshSecret = []byte("access_secret")
 
 func main() {
 	http.HandleFunc("/login", Login)
+	http.HandleFunc("/profile", Profile)
+	http.HandleFunc("/refresh", Refresh)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
+func Refresh(w http.ResponseWriter, r *http.Request) {
+
+}
 func Login(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
@@ -49,8 +56,16 @@ func Login(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		refreshString, err := GenerateToken(user.ID, refreliveMin, RefreshSecret)
+		if err != nil {
+			log.Println("error token")
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		resp := LoginResponse{
-			AccessToken: tokenString,
+			AccessToken:  tokenString,
+			RefreshToken: refreshString,
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -59,4 +74,31 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only POST methid is allowed", http.StatusMethodNotAllowed)
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func Profile(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+
+		tokenString := GetTokenFromBearerString(r.Header.Get("Authorization"))
+		claims, err := ValidateToken(tokenString, string(AccessSecret))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusFailedDependency)
+			return
+		}
+		user, err := NewUserRepo().GetById(claims.ID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusFailedDependency)
+			return
+		}
+		resp := UserResponse{
+			Email:    user.Email,
+			Name:     user.Name,
+			Password: user.Password,
+		}
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+	default:
+		http.Error(w, "Only POST methid is allowed", http.StatusMethodNotAllowed)
+	}
 }
